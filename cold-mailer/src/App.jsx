@@ -2,297 +2,468 @@ import React, { useState, useEffect } from 'react';
 import { 
   User, 
   Building, 
-  Mail, 
-  Plus, 
   Search, 
   Linkedin, 
-  FileDown,
+  Copy, 
+  Download, 
+  Brain, 
+  Mail,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
-  Users
+  Plus,
+  Trash2,
+  FileText
 } from 'lucide-react';
 
-// --- Helper Functions ---
+// --- AI Simulation Functions ---
 
 /**
- * Generates the search URLs for different services
- * @param {string} service - 'google', 'linkedin', 'experte'
- * @param {string} firstName
- * @param {string} lastName
- * @param {string} company
- * @param {string} companyDomain
- * @returns {string} The full URL to open in a new tab
+ * Simulates an AI generating likely email permutations.
+ * @param {string} firstName - The prospect's first name.
+ * @param {string} lastName - The prospect's last name.
+ * @param {string} domain - The company's domain.
+ * @returns {string} A newline-separated string of email guesses.
  */
-const generateSearchUrl = (service, firstName, lastName, company, companyDomain) => {
-  const fullName = `${firstName} ${lastName}`.trim();
-
-  switch(service) {
-    case 'google_company':
-      // Searches Google for the company name to find its domain
-      return `https://www.google.com/search?q=${encodeURIComponent(company + ' official website')}`;
-    
-    case 'linkedin':
-      // Searches LinkedIn for the person at that company
-      return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(fullName + ' ' + company)}`;
-      
-    case 'experte':
-      // Searches EXPERTE.com's email finder (needs a domain)
-      if (!companyDomain) return null;
-      return `https://www.experte.com/email-finder?name=${encodeURIComponent(fullName)}&domain=${encodeURIComponent(companyDomain)}`;
-      
-    default:
-      return null;
+const generateAIGuesses = (firstName, lastName, domain) => {
+  if (!firstName || !lastName || !domain) {
+    return "Please enter a first name, last name, and domain to generate guesses.";
   }
+
+  const fn = firstName.toLowerCase();
+  const ln = lastName.toLowerCase();
+  const fi = fn[0] || '';
+  const li = ln[0] || '';
+
+  const patterns = [
+    `${fn}.${ln}@${domain}`,
+    `${fi}${ln}@${domain}`,
+    `${fn}${li}@${domain}`,
+    `${fn}@${domain}`,
+    `${ln}@${domain}`,
+    `${fn}_${ln}@${domain}`,
+    `${fi}.${ln}@${domain}`,
+    `${fn}${ln}@${domain}`,
+    `${ln}.${fn}@${domain}`,
+    `${fn[0]}${ln[0]}@${domain}`,
+  ];
+
+  return patterns.join('\n');
 };
 
 /**
- * Generates a CSV file from the prospect list and triggers a download.
- * This is the "Export to Google Sheets" feature.
- * @param {object[]} prospects - The array of prospect objects
+ * Simulates an AI drafting a cold email.
+ * @param {string} firstName - The prospect's first name.
+ * @param {string} company - The prospect's company.
+ * @returns {string} A drafted cold email.
  */
-const exportToCSV = (prospects) => {
-  if (prospects.length === 0) {
-    alert("Your prospect list is empty!");
-    return;
+const draftAIEmail = (firstName, company) => {
+  const myService = "[Your Service, e.g., 'modern web design']";
+  const myValueProp = "[Your Value Prop, e.g., 'help companies increase user engagement']";
+  const myName = "[Your Name]";
+
+  if (!firstName) {
+    return "Please enter at least a first name to draft an email.";
   }
 
-  // 1. Create the CSV headers
-  const headers = "firstName,lastName,company,companyDomain,verifiedEmail,dateAdded";
-  
-  // 2. Create the data rows
-  const rows = prospects.map(p => 
-    [
-      `"${p.firstName}"`,
-      `"${p.lastName}"`,
-      `"${p.company}"`,
-      `"${p.companyDomain}"`,
-      `"${p.email}"`,
-      `"${p.dateAdded}"`
-    ].join(',')
-  ).join('\n');
+  return `Subject: Quick question re: ${company}
 
-  const csvContent = "data:text/csv;charset=utf-8," + headers + "\n" + rows;
+Hi ${firstName},
 
-  // 3. Create a link and trigger the download
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", "prospect_list.csv");
-  document.body.appendChild(link); // Required for Firefox
-  link.click();
-  document.body.removeChild(link);
+I was on ${company}'s website and noticed you're the [Prospect's Title].
+
+I specialize in ${myService} and ${myValueProp}. I had a quick idea on how you could [Specific Idea for Them].
+
+Would you be open to a 10-minute chat next week if you're interested?
+
+Best,
+
+${myName}
+`;
 };
-
 
 // --- Main App Component ---
+
 export default function App() {
-  
   // --- State ---
-  
-  // State for the main form
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [company, setCompany] = useState('');
-  const [companyDomain, setCompanyDomain] = useState(''); // New field!
-  const [verifiedEmail, setVerifiedEmail] =useState(''); // For the final logging
+  const [domain, setDomain] = useState('');
+  const [email, setEmail] = useState('');
+  const [title, setTitle] = useState('');
   
-  // State for the prospect list (loaded from localStorage)
-  const [prospects, setProspects] = useState(() => {
-    try {
-      const saved = localStorage.getItem('workflowProspects');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  const [prospects, setProspects] = useState([]);
+  const [showHelpers, setShowHelpers] = useState(true);
+  const [aiGuesses, setAiGuesses] = useState('');
+  const [aiDraft, setAiDraft] = useState('');
 
-  const [error, setError] = useState(null);
-
-  // --- Effect ---
-  // Save prospects to localStorage whenever the list changes
+  // --- Load from LocalStorage on mount ---
   useEffect(() => {
-    localStorage.setItem('workflowProspects', JSON.stringify(prospects));
-  }, [prospects]);
-  
-
-  // --- Handlers ---
-
-  /**
-   * Opens the search URL in a new tab
-   */
-  const handleSearch = (service) => {
-    const url = generateSearchUrl(service, firstName, lastName, company, companyDomain);
-    
-    if (url) {
-      window.open(url, '_blank');
-    } else {
-      setError(`You must enter a 'Company Domain' to use that search!`);
+    const storedProspects = localStorage.getItem('prospects');
+    if (storedProspects) {
+      setProspects(JSON.parse(storedProspects));
     }
+  }, []);
+
+  // --- Save to LocalStorage on change ---
+  useEffect(() => {
+    localStorage.setItem('prospects', JSON.stringify(prospects));
+  }, [prospects]);
+
+  // --- Event Handlers ---
+
+  const handleMagicSearch = (service) => {
+    let query = '';
+    let url = '';
+
+    switch (service) {
+      case 'linkedin':
+        query = `${firstName} ${lastName} ${company}`;
+        url = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(query)}`;
+        break;
+      case 'google':
+        query = `${firstName} ${lastName} ${company} linkedin`;
+        url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        break;
+      case 'domain':
+        query = `${company} website`;
+        url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        break;
+      default:
+        return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  /**
-   * Saves the completed prospect to the list
-   */
+  const handleGenerateAIGuesses = () => {
+    const guesses = generateAIGuesses(firstName, lastName, domain);
+    setAiGuesses(guesses);
+  };
+  
+  const handleDraftAIEmail = () => {
+    const draft = draftAIEmail(firstName, company);
+    setAiDraft(draft);
+  };
+
   const handleLogProspect = (e) => {
     e.preventDefault();
-    setError(null);
-
-    if (!firstName || !company || !verifiedEmail) {
-      setError("First Name, Company, and Verified Email are required to log a prospect.");
+    if (!email || !firstName || !company) {
+      alert('Please fill in at least First Name, Company, and Email to log a prospect.');
       return;
     }
-
     const newProspect = {
-      id: Date.now().toString(),
+      id: Date.now(),
       firstName,
       lastName,
       company,
-      companyDomain,
-      email: verifiedEmail,
-      dateAdded: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+      domain,
+      email,
+      title,
+      status: 'Not Contacted',
     };
-
-    setProspects(prev => [newProspect, ...prev]);
-
-    // Reset form fields for the next prospect
+    setProspects([newProspect, ...prospects]);
+    
+    // Clear the form
     setFirstName('');
     setLastName('');
     setCompany('');
-    setCompanyDomain('');
-    setVerifiedEmail('');
+    setDomain('');
+    setEmail('');
+    setTitle('');
+    setAiGuesses('');
+    setAiDraft('');
+  };
+
+  const handleDeleteProspect = (id) => {
+    if (window.confirm('Are you sure you want to delete this prospect?')) {
+      setProspects(prospects.filter(p => p.id !== id));
+    }
+  };
+
+  const handleUpdateStatus = (id, newStatus) => {
+    setProspects(prospects.map(p => 
+      p.id === id ? { ...p, status: newStatus } : p
+    ));
+  };
+  
+  const handleCopyText = (text) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('Copied to clipboard!');
+    }, () => {
+      alert('Failed to copy.');
+    });
+  };
+
+  const exportToCSV = () => {
+    if (prospects.length === 0) {
+      alert('No prospects to export!');
+      return;
+    }
+
+    const headers = 'firstName,lastName,company,domain,email,title,status\n';
+    const csvContent = prospects
+      .map(p => 
+        `"${p.firstName}","${p.lastName}","${p.company}","${p.domain}","${p.email}","${p.title}","${p.status}"`
+      )
+      .join('\n');
+
+    const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-IS;,utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'prospect_list.csv');
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // --- Render ---
   return (
-    <div className="min-h-screen bg-gray-900 font-inter text-gray-200 p-4 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-center text-white mb-8">
-          Prospecting Workflow Helper
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-900 text-gray-100 font-sans">
+      
+      {/* --- Main Input Panel --- */}
+      <div className="w-full lg:w-1/3 xl:w-1/4 p-6 bg-gray-950 flex flex-col space-y-6 shadow-2xl lg:h-screen lg:overflow-y-auto">
+        
+        <h1 className="text-3xl font-bold text-white flex items-center">
+          <Brain className="mr-3 text-indigo-400" size={32} />
+          AI Prospecting Hub
         </h1>
+        
+        {/* --- Prospect Input Form --- */}
+        <form onSubmit={handleLogProspect} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">First Name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input 
+                type="text" 
+                placeholder="Jane" 
+                className="w-full pl-10 pr-4 py-2 bg-gray-800 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Last Name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input 
+                type="text" 
+                placeholder="Doe" 
+                className="w-full pl-10 pr-4 py-2 bg-gray-800 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Company</label>
+            <div className="relative">
+              <Building className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input 
+                type="text" 
+                placeholder="Acme Inc." 
+                className="w-full pl-10 pr-4 py-2 bg-gray-800 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Company Domain</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input 
+                type="text" 
+                placeholder="acme.com" 
+                className="w-full pl-10 pr-4 py-2 bg-gray-800 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* --- Magic Search Buttons --- */}
+          <div className="grid grid-cols-3 gap-2">
+            <button type="button" onClick={() => handleMagicSearch('linkedin')} className="flex items-center justify-center text-sm px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-all">
+              <Linkedin size={16} className="mr-1.5" /> LinkedIn
+            </button>
+            <button type="button" onClick={() => handleMagicSearch('google')} className="flex items-center justify-center text-sm px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-all">
+              <Search size={16} className="mr-1.5" /> Google
+            </button>
+            <button type="button" onClick={() => handleMagicSearch('domain')} className="flex items-center justify-center text-sm px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-all">
+              <ExternalLink size={16} className="mr-1.5" /> Domain
+            </button>
+          </div>
+
+          {/* --- AI Helper Tools --- */}
+          <div className="pt-4 space-y-4">
+            <h3 className="text-lg font-semibold text-indigo-300 border-b border-gray-700 pb-2">AI Helpers</h3>
+            
+            {/* AI Guesses */}
+            <div className="space-y-2">
+              <button type="button" onClick={handleGenerateAIGuesses} className="w-full flex items-center justify-center text-sm px-3 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md transition-all">
+                <Brain size={16} className="mr-1.5" /> Generate AI Guesses
+              </button>
+              <div className="relative">
+                <textarea
+                  readOnly
+                  value={aiGuesses}
+                  placeholder="AI-generated email patterns will appear here..."
+                  className="w-full h-28 p-3 bg-gray-800 rounded-md border border-gray-700 text-sm resize-none"
+                />
+                <button type="button" onClick={() => handleCopyText(aiGuesses)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-white bg-gray-700 rounded-md">
+                  <Copy size={16} />
+                </button>
+              </div>
+            </div>
+            
+            {/* AI Draft */}
+            <div className="space-y-2">
+              <button type="button" onClick={handleDraftAIEmail} className="w-full flex items-center justify-center text-sm px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-md transition-all">
+                <Mail size={16} className="mr-1.5" /> Draft AI Email
+              </button>
+              <div className="relative">
+                <textarea
+                  value={aiDraft}
+                  onChange={(e) => setAiDraft(e.target.value)}
+                  placeholder="AI-drafted cold email will appear here..."
+                  className="w-full h-40 p-3 bg-gray-800 rounded-md border border-gray-700 text-sm"
+                />
+                <button type="button" onClick={() => handleCopyText(aiDraft)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-white bg-gray-700 rounded-md">
+                  <Copy size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
           
-          {/* Left Column (Input & Actions) */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-              <h2 className="text-2xl font-semibold mb-5 text-white">1. Enter Prospect Info</h2>
-              <form className="space-y-4">
-                <div className="relative">
-                  <User className="absolute w-5 h-5 text-gray-400 left-3 top-3.5" />
-                  <input type="text" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="relative">
-                  <User className="absolute w-5 h-5 text-gray-400 left-3 top-3.5" />
-                  <input type="text" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="relative">
-                  <Building className="absolute w-5 h-5 text-gray-400 left-3 top-3.5" />
-                  <input type="text" placeholder="Company Name" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </form>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-              <h2 className="text-2xl font-semibold mb-5 text-white">2. Auto-Search (New Tab)</h2>
-              <p className="text-sm text-gray-400 mb-4">Use these to find the info. New tabs will open.</p>
-              <div className="space-y-3">
-                <button onClick={() => handleSearch('google_company')} className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition">
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-                  <span>Find Company Domain (Google)</span>
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-                <button onClick={() => handleSearch('linkedin')} className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                  <Linkedin className="w-5 h-5" />
-                  <span>Find Profile (LinkedIn)</span>
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-                
-                {/* This is the Email Verification step */}
-                <p className="text-sm text-gray-400 pt-4">After finding the domain, enter it below:</p>
-                <div className="relative">
-                  <Building className="absolute w-5 h-5 text-gray-400 left-3 top-3.5" />
-                  <input type="text" placeholder="company-domain.com" value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <button onClick={() => handleSearch('experte')} disabled={!companyDomain} className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50">
-                  <Search className="w-5 h-5" />
-                  <span>Verify Email (EXPERTE.com)</span>
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-              <h2 className="text-2xl font-semibold mb-5 text-white">3. Log Verified Prospect</h2>
-              <form onSubmit={handleLogProspect} className="space-y-4">
-                {error && <p className="text-sm text-red-400">{error}</p>}
-                <div className="relative">
-                  <Mail className="absolute w-5 h-5 text-gray-400 left-3 top-3.5" />
-                  <input type="email" placeholder="Paste Verified Email Here" value={verifiedEmail} onChange={(e) => setVerifiedEmail(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <button type="submit" className="w-full flex items-center justify-center px-4 py-3 font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <Plus className="w-5 h-5 mr-2" />
-                  Log Prospect to List
-                </button>
-              </form>
-            </div>
+          <hr className="border-gray-700" />
+          
+          {/* --- Final Logging Form --- */}
+          <h3 className="text-lg font-semibold text-green-300 pt-2">Log Verified Prospect</h3>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Job Title</label>
+            <input 
+              type="text" 
+              placeholder="e.g., CEO, Head of Marketing" 
+              className="w-full px-4 py-2 bg-gray-800 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Verified Email</label>
+            <input 
+              type="email" 
+              placeholder="jane.doe@acme.com" 
+              required
+              className="w-full px-4 py-2 bg-gray-800 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
 
-          {/* Right Column (Prospect List & Export) */}
-          <div className="lg:col-span-3">
-            <div className="bg-gray-800 p-6 rounded-xl shadow-lg min-h-[400px]">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-                <h2 className="text-2xl font-semibold flex items-center mb-4 sm:mb-0">
-                  <Users className="w-6 h-6 mr-3 text-white" />
-                  My Prospect List ({prospects.length})
-                </h2>
-                {/* This is your Google Sheets feature! */}
-                <button 
-                  onClick={() => exportToCSV(prospects)}
-                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition"
-                  >
-                  <FileDown className="w-5 h-5" />
-                  <span>Export to CSV (for Google Sheets)</span>
-                </button>
-              </div>
-              
-              <div className="flow-root">
-                {prospects.length > 0 ? (
-                  <ul className="divide-y divide-gray-700">
-                    {prospects.map(p => (
-                      <li key={p.id} className="py-4">
-                        <div className="flex items-center space-x-4">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-base font-semibold text-white truncate">
-                              {p.firstName} {p.lastName}
-                            </p>
-                            <p className="text-sm text-gray-400 truncate">
-                              <Building className="w-4 h-4 inline -mt-1 mr-1.5" />
-                              {p.company}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium text-blue-400 truncate">
-                              <Mail className="w-4 h-4 inline -mt-1 mr-1.5" />
-                              {p.email}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {p.dateAdded}
-                            </p>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-center py-12">
-                    <Users className="w-12 h-12 mx-auto text-gray-500" />
-                    <h3 className="mt-2 text-lg font-medium text-gray-200">No prospects logged</h3>
-                    <p className="mt-1 text-sm text-gray-400">Use the form to add your first one!</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <button type="submit" className="w-full flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 rounded-md text-lg font-bold transition-all">
+            <Plus size={20} className="mr-2" /> Log Prospect
+          </button>
+        </form>
 
+      </div>
+      
+      {/* --- Prospect List Panel --- */}
+      <div className="w-full lg:w-2/3 xl:w-3/4 p-6 lg:h-screen lg:overflow-y-auto">
+        
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-3xl font-bold text-white">Prospect List ({prospects.length})</h2>
+          <button onClick={exportToCSV} className="flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-all">
+            <Download size={18} className="mr-2" /> Export to CSV
+          </button>
+        </div>
+        
+        {/* --- How To Use Section --- */}
+        <div className="mb-6">
+          <button 
+            onClick={() => setShowHelpers(!showHelpers)} 
+            className="text-lg font-semibold text-gray-300 flex items-center cursor-pointer"
+          >
+            How To Use This App
+            {showHelpers ? <ChevronUp size={20} className="ml-2" /> : <ChevronDown size={20} className="ml-2" />}
+          </button>
+          {showHelpers && (
+            <div className="mt-2 p-4 bg-gray-800 rounded-md text-gray-300 space-y-2 text-sm">
+              <p><strong>1. Find Target:</strong> Manually find a prospect on LinkedIn (e.g., Jane Doe @ Acme Inc.).</p>
+              <p><strong>2. Enter Info:</strong> Fill in the First Name, Last Name, and Company in the form.</p>
+              <p><strong>3. Search:</strong> Use the "Magic Search" buttons to find their company domain and confirm their profile.</p>
+              <p><strong>4. Generate:</strong> Use "Generate AI Guesses" to get likely email patterns.</p>
+              <p><strong>5. Verify:</strong> Use the "Gmail Hover Trick" or a free tool (like EXPERTE.com) to find the *real* email from the guess list.</p>
+              <p><strong>6. Log:</strong> Enter the Verified Email and Job Title, then click "Log Prospect".</p>
+              <p><strong>7. Draft & Send:</strong> Use "Draft AI Email" to get a template, copy it, and send your cold email!</p>
+            </div>
+          )}
+        </div>
+
+        {/* --- Prospect Table --- */}
+        <div className="w-full overflow-x-auto">
+          {prospects.length === 0 ? (
+            <div className="text-center py-10 bg-gray-800 rounded-md">
+              <FileText size={48} className="mx-auto text-gray-500" />
+              <p className="mt-4 text-gray-400">Your logged prospects will appear here.</p>
+            </div>
+          ) : (
+            <table className="min-w-full bg-gray-800 rounded-lg shadow">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-300 uppercase">Contact</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-300 uppercase hidden md:table-cell">Company</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-300 uppercase hidden lg:table-cell">Email</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-300 uppercase">Status</th>
+                  <th className="text-right px-4 py-3 text-sm font-semibold text-gray-300 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {prospects.map(prospect => (
+                  <tr key={prospect.id} className="hover:bg-gray-700/50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-white">{prospect.firstName} {prospect.lastName}</div>
+                      <div className="text-sm text-gray-400 md:hidden">{prospect.company}</div>
+                      <div className="text-sm text-gray-400">{prospect.title}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-300 hidden md:table-cell">{prospect.company}</td>
+                    <td className="px-4 py-3 text-sm text-indigo-300 hidden lg:table-cell">{prospect.email}</td>
+                    <td className="px-4 py-3">
+                      <select 
+                        value={prospect.status}
+                        onChange={(e) => handleUpdateStatus(prospect.id, e.target.value)}
+                        className="bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option>Not Contacted</option>
+                        <option>Contacted</option>
+                        <option>Replied</option>
+                        <option>Meeting Set</option>
+                        <option>Closed</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => handleDeleteProspect(prospect.id)} className="text-gray-400 hover:text-red-500 p-1">
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
